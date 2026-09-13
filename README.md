@@ -30,7 +30,7 @@ Started with a standard Nmap scan to identify open ports and running services on
 nmap -sC -sV -oN nmap_scan.txt <TARGET_IP>
 ```
 
-![Nmap Scan]()
+![Nmap Scan](nmap.png)
 
 ---
 
@@ -38,7 +38,7 @@ nmap -sC -sV -oN nmap_scan.txt <TARGET_IP>
 
 Port 80 was open, hosting the CMS application. Navigating to the site brought me to a login page.
 
-![Website Landing Page](screenshots/02-website.png)
+![Website Landing Page](Cockpit.png)
 
 With no credentials available, I needed to inspect the login flow more closely — this meant firing up Burp Suite to intercept the traffic.
 
@@ -48,7 +48,7 @@ With no credentials available, I needed to inspect the login flow more closely �
 
 Intercepting the login request in Burp Suite, I noticed the request included a CSRF token that stood out.
 
-![Burp Suite Login Intercept](screenshots/03-burp-login-intercept.png)
+![Burp Suite Login Intercept](Burp.png)
 
 Researching this behavior led me to a known vulnerability affecting this CMS, detailed here:
 
@@ -56,13 +56,8 @@ Researching this behavior led me to a known vulnerability affecting this CMS, de
 
 This CSRF flaw allows an attacker to leak backend user data (usernames and password hashes) via a crafted login/auth request.
 
-**Payload used to drop the username and password:**
+![CSRF Payload](Burpesuite.png)
 
-![CSRF Payload](screenshots/04-csrf-payload.png)
-
-**Response received from Burp Suite, leaking user account info:**
-
-![Leaked User Info](screenshots/05-burp-response-leak.png)
 
 ---
 
@@ -73,8 +68,7 @@ With the leaked account information, the next step was hijacking the password re
 **Step 1 — Request a password reset token**
 
 Using the extracted username, a password reset request was triggered to generate a token.
-
-![Request Reset Token](screenshots/06-request-reset-token.png)
+![token](Burp(1).png)
 
 **Step 2 — Swap the endpoint**
 
@@ -84,19 +78,17 @@ The key to this exploit: instead of submitting the token to `POST /auth/resetpas
 POST /auth/resetpassword   →   POST /auth/newpassword
 ```
 
-![Endpoint Swap](screenshots/07-endpoint-swap.png)
 
 **Step 3 — Extract user account data**
 
 Using the modified endpoint, I was able to extract full account details — including the username, password hash, API key, and reset token.
 
-![Extracted Token/User Info](screenshots/08-extract-user-data.png)
 
 **Step 4 — Reset the password**
 
 With the valid reset token in hand, I reset the admin account's password and successfully logged in.
 
-![Password Reset Success](screenshots/09-password-reset.png)
+![Leaked User Info](Burpesuite(1).png)
 
 ---
 
@@ -104,18 +96,17 @@ With the valid reset token in hand, I reset the admin account's password and suc
 
 Now authenticated as admin, I located a file manager / upload feature within the CMS panel that allowed arbitrary file creation.
 
+
 I crafted a simple PHP web shell payload and uploaded it as `shell.php`.
 
-![Web Shell Upload](screenshots/10-webshell-upload.png)
+![shell](shell.png)
+![Web Shell Upload](import_shell.png)
 
 Confirmed code execution by browsing directly to the uploaded shell:
 
 ```bash
 curl http://<TARGET_IP>:80/shell.php
 ```
-
-![Curl Shell Confirmation](screenshots/11-curl-shell.png)
-
 ---
 
 ## Reverse Shell
@@ -127,11 +118,10 @@ With confirmed RCE, I crafted a reverse shell payload pointing back to my attack
 nc -lnvp 4447
 ```
 
-![Reverse Shell Payload](screenshots/12-reverse-shell-payload.png)
 
 Successfully caught a shell as the web server user:
 
-![Shell Access Confirmed](screenshots/13-shell-access.png)
+![Reverse Shell Payload](reverse_shell.png)
 
 ---
 
@@ -147,7 +137,7 @@ show collections
 db.user.find()
 ```
 
-![MongoDB Enumeration](screenshots/14-mongodb-creds.png)
+![MongoDB Enumeration](Password.png)
 
 The database contained plaintext/hashed credentials for a local system user, which I used to `ssh` into the box and escalate from `www-data` to a standard user account.
 
@@ -161,19 +151,18 @@ Checking sudo privileges for the current user revealed a binary that could be ru
 sudo -l
 ```
 
-![Sudo Permissions](screenshots/15-sudo-l.png)
+![Sudo Permissions](Sudo.png)
 
 Cross-referencing the binary against **GTFOBins** confirmed it could be abused for privilege escalation.
 
-![GTFOBins Reference](screenshots/16-gtfobins.png)
+![GTFOBins Reference](exiftool.png)
 
 In addition to the GTFOBins path, the sudo-permitted binary was also vulnerable to a **known remote code execution (RCE) CVE**, which provided an alternative and more reliable escalation route.
 
-![Sudo RCE Vulnerability](screenshots/17-sudo-rce-vuln.png)
+https://github.com/UNICORDev/exploit-CVE-2021-22204
 
-Crafted a malicious file to trigger the vulnerability:
+![Sudo RCE Vulnerability](CVE-2021-2204.png)
 
-![Malicious File Creation](screenshots/18-malicious-file.png)
 
 Executing the vulnerable binary as root via sudo triggered code execution in the root context, dropping me into a root shell.
 
@@ -181,10 +170,11 @@ Executing the vulnerable binary as root via sudo triggered code execution in the
 sudo /path/to/vulnerable-binary <malicious-file>
 ```
 
-![Root Access Achieved](screenshots/19-root-access.png)
+![exploit](Exploitation.png)
 
 **Root flag captured — box fully compromised.** ✅
 
+![root](root.png)
 ---
 
 ## Summary
